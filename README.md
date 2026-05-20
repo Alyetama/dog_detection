@@ -151,9 +151,7 @@ python send_prediction_tasks.py
 
 Edit environment variables in the script:
 - `LABEL_STUDIO_TOKEN` – API token
-- `LS_URL` – Label Studio URL
-- `PROJECT_ID` – Target project
-- `ML_API_URL` – Prediction API endpoint
+- `LABEL_STUDIO_BASE_URL` – Label Studio URL
 
 Fetches all tasks without annotations/predictions and sends them to your prediction API.
 
@@ -164,7 +162,7 @@ Fetches all tasks without annotations/predictions and sends them to your predict
 Shell script to export Label Studio project:
 
 ```bash
-./export_annotations.sh
+bash export_annotations.sh
 ```
 
 ## 🏗️ Project Structure
@@ -212,72 +210,7 @@ CREATE TABLE errors (
 
 </details>
 
-## 🎯 Typical Workflows
-
-<details>
-<summary><b>1. Prepare dataset from Label Studio</b></summary>
-
-```bash
-python prepare_detection_yolo_dataset.py \
-  -f exported_project.json \
-  -l annotations \
-  --background \
-  --hallucinations false_positives/
-```
-
-</details>
-
-<details>
-<summary><b>2. Scan directory and copy detected images</b></summary>
-
-```bash
-python predict_and_filter.py \
-  -w best.pt \
-  -s /mnt/data/images \
-  -o results/detected \
-  --copy \
-  --db results/detections.db \
-  --batch 16 \
-  --half
-```
-
-</details>
-
-<details>
-<summary><b>3. Random sample and visualize 10K images</b></summary>
-
-```bash
-python predict_and_filter.py \
-  -w best.pt \
-  -s /mnt/large_dataset \
-  -o results/sampled \
-  --select-random 10000 \
-  --visualize \
-  --db results/predictions.db
-```
-
-</details>
-
-<details>
-<summary><b>4. Start prediction API for Label Studio</b></summary>
-
-```bash
-python prediction_api.py -w best.pt -m "v1.0" &
-python send_prediction_tasks.py
-```
-
-</details>
-
-## ⚡ Performance
-
-- **Inference:** 1000+ images/min on modern GPUs
-- **Memory:** Streaming inference with configurable batch sizes
-- **Sampling:** Instant random sampling of millions of files via indexed lookup (first run builds index)
 
 ## 📄 License
 
 MIT License – see [LICENSE](LICENSE) file
-
-## 🤝 Contributing
-
-Issues and pull requests welcome!
