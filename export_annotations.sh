@@ -8,9 +8,10 @@ set -a
 set +a
 
 TOKEN=$LABEL_STUDIO_TOKEN
+BASE_URL=$LABEL_STUDIO_BASE_URL
 
 curl -X GET \
-    "https://label.biodiv.app/api/projects/12/export?exportType=JSON_MIN" \
+    "${BASE_URL}/api/projects/12/export?exportType=JSON_MIN" \
     -H "Authorization: Token $TOKEN" \
     --output  "project-12-at-$current_date-$random_string.json"
 

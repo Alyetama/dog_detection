@@ -16,7 +16,6 @@ class MyModel(LabelStudioMLBase):
 
     def __init__(self, **kwargs):
         super(MyModel, self).__init__(**kwargs)
-        # Verify this port matches where you are running api_md_latest.py
         self.api_endpoint = os.environ['API_ENDPOINT_URL'] + '/predict'
 
     def predict(self, tasks, **kwargs):
@@ -29,7 +28,6 @@ class MyModel(LabelStudioMLBase):
                 r = requests.post(self.api_endpoint, json=data)
             except HTTPError as e:
                 logger.error(f"HTTPError: {e}")
-                # Append empty results so Label Studio doesn't crash on this task
                 predictions.append({"result": []})
                 continue
             except Exception as e:
@@ -44,11 +42,9 @@ class MyModel(LabelStudioMLBase):
 
             pred = r.json()
 
-            # If the API returns {} (no detections), give Label Studio the expected format
             if not pred:
                 predictions.append({"result": []})
             else:
                 predictions.append(pred)
 
-        # Return the full list of predictions for all tasks after the loop finishes
         return predictions
