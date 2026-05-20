@@ -1,0 +1,12 @@
+Pillow
+boto3
+fastapi
+label-studio-ml
+loguru
+opencv-python
+pydantic
+python-dotenv
+requests
+tqdm
+ultralytics
+uvicorn
