@@ -1,184 +1,189 @@
 # Dog Detection
 
-High-speed dog detection system using YOLOv8 with efficient dataset preparation and batch processing capabilities.
+High-speed dog detection system using YOLOv26 with efficient dataset preparation, batch inference, and Label Studio integration.
 
-## Overview
+## ✨ Features
 
-This project provides tools for preparing YOLO-format datasets from Label Studio annotations and performing high-speed inference on large image collections using YOLOv8. It's designed for scalable processing of millions of images with SQLite logging and multithreaded I/O operations.
+- **Dataset Preparation** – Convert Label Studio annotations to YOLO format with flexible class handling
+- **High-Speed Inference** – Process millions of images with GPU acceleration and instant random sampling
+- **Label Studio Integration** – REST API for real-time predictions and automated task generation
+- **Database Logging** – SQLite tracking of predictions and errors
+- **Image Optimization** – Optional compression and resizing during dataset prep
+- **Hard Negative Mining** – Support for hallucinated/false-positive images in training
 
-## Features
+## 🚀 Quick Start
 
-- **Efficient Dataset Preparation**: Convert Label Studio JSON exports to YOLO format with flexible class handling
-- **High-Speed Inference**: Process millions of images with batch processing and GPU acceleration
-- **Database Logging**: SQLite integration for tracking predictions and errors
-- **Multithreaded I/O**: Concurrent file operations for optimal performance
-- **Flexible Sampling**: Support for exhaustive scanning or instant random sampling of large datasets
-- **Visualization**: Optional annotation visualization with bounding boxes
-- **Hard Negative Mining**: Support for hallucinated/hard negative images in training data
+<details open>
+<summary><b>Installation</b></summary>
 
-## Installation
-
-### Requirements
-
-- Python 3.7+
-- PyTorch with CUDA support (recommended for GPU acceleration)
-- Dependencies listed in requirements (inferred from code):
-  - `ultralytics` - YOLOv8 implementation
-  - `opencv-python` - Image processing
-  - `Pillow` - Image handling
-  - `tqdm` - Progress bars
-  - `boto3` - AWS S3 integration
-  - `python-dotenv` - Environment variable management
-
-### Setup
-
-1. Clone the repository:
 ```bash
 git clone https://github.com/Alyetama/dog_detection.git
 cd dog_detection
+pip install -r requirements.txt
 ```
 
-2. Install dependencies:
-```bash
-pip install ultralytics opencv-python Pillow tqdm boto3 python-dotenv
+For Label Studio integration, also set up `.env`:
+```env
+LABEL_STUDIO_TOKEN=your_token
 ```
 
-3. For AWS S3 support, create a `.env` file with your credentials:
+For S3 support, add to `.env`:
 ```env
 ENDPOINT_URL=https://your-s3-endpoint.com
-ACCESS_KEY_ID=your_access_key
-SECRET_ACCESS_KEY=your_secret_key
-BUCKET_NAME=your_bucket_name
+ACCESS_KEY_ID=your_key
+SECRET_ACCESS_KEY=your_secret
+BUCKET_NAME=your_bucket
 BUCKET_REGION=us-east-1
 ```
 
-## Usage
+</details>
 
-### 1. Dataset Preparation
+## 📋 Scripts
 
-Prepare a YOLO-format dataset from Label Studio exports:
+### 1️⃣ Prepare Dataset
+
+Convert Label Studio JSON exports to YOLO format:
 
 ```bash
 python prepare_detection_yolo_dataset.py \
-  -f exported_project.json \
-  -l annotations_group_name \
-  -i local_images_dir \
+  -f annotations.json \
+  -l annotations_group \
   --background \
-  --hallucinations hard_negatives_dir
+  --compress
 ```
 
-**Arguments:**
-- `-f, --project-exported-file`: Path to Label Studio JSON export (required)
-- `-l, --label-by`: Parent group name containing labels (required)
-- `-i, --images-dir`: Local directory to copy images from (optional, avoids S3 downloads)
-- `-e, --exclude-classes`: Comma-separated list of classes to exclude
-- `--single-class`: Treat all classes as single target class (id 0)
-- `--background`: Include background images (up to 10% of dataset)
-- `--hallucinations`: Path to directory with hard negative images
+<details>
+<summary><b>Full Arguments</b></summary>
 
-**Output:**
-- `project_folder/`: Dataset directory with train/val splits
-- `dataset.yaml`: YOLO format configuration file
-- `project_folder/classes.txt`: Class mapping
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `-f, --project-exported-file` | ✅ | Label Studio JSON export |
+| `-l, --label-by` | ✅ | Parent group name containing labels |
+| `-i, --images-dir` | | Local directory to copy images from (avoids S3 downloads) |
+| `-e, --exclude-classes` | | Comma-separated classes to exclude |
+| `--single-class` | | Treat all classes as single target (id 0) |
+| `--background` | | Include background images (~10% of dataset) |
+| `--hallucinations` | | Directory with hard negative images |
+| `--compress` | | Enable image compression |
+| `--compress-size` | | Max dimension (default: 1280) |
+| `--compress-quality` | | JPEG quality 1-100 (default: 95) |
 
-### 2. High-Speed Inference
+**Outputs:** `project_folder/` (train/val splits), `dataset.yaml`, `classes.txt`
 
-Run predictions on large image collections:
+</details>
+
+### 2️⃣ Run Inference
+
+High-speed prediction on image collections:
 
 ```bash
 python predict_and_filter.py \
   -w best.pt \
   -s /path/to/images \
   -o output_dir \
-  --conf 0.25 \
-  --imgsz 1280 \
   --batch 8 \
-  --db predictions.db \
-  --copy \
-  --visualize
+  --db predictions.db
 ```
 
-**Arguments:**
-- `-w, --weights`: Path to YOLO weights file (required)
-- `-s, --source`: Base directory to scan (required)
-- `-o, --output`: Output directory for detections (required)
-- `-p, --pattern`: Optional glob pattern for subdirectories
-- `-c, --conf`: Confidence threshold (default: 0.25)
-- `--imgsz`: Inference image size (default: 1280)
-- `--batch`: Batch size for GPU inference (default: 8)
-- `--half`: Enable FP16 half-precision inference
-- `--db`: SQLite database path for logging predictions and errors
-- `--copy`: Copy detected images to output directory
-- `--visualize`: Save annotated images with bounding boxes
-- `--select-random N`: Randomly select N unprocessed images (instant sampling for millions)
-- `--reindex`: Force rebuild of image index file
+<details>
+<summary><b>Full Arguments</b></summary>
 
-**Output:**
-- `output_dir/`: Directory containing detected images
-- `output_dir_visualized/`: Annotated images (if `--visualize` enabled)
-- `predictions.db`: SQLite database with:
-  - `predictions` table: Image path, region info, detection count, confidence scores
-  - `errors` table: Failed/unreadable images
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `-w, --weights` | | Path to YOLO weights (required) |
+| `-s, --source` | | Base directory to scan (required) |
+| `-o, --output` | | Output directory (required) |
+| `-p, --pattern` | | Glob pattern for subdirectories |
+| `-c, --conf` | 0.25 | Confidence threshold |
+| `--imgsz` | 1280 | Inference image size |
+| `--batch` | 8 | Batch size |
+| `--half` | | Enable FP16 inference |
+| `--db` | | SQLite database path |
+| `--copy` | | Copy detected images to output |
+| `--visualize` | | Save annotated images |
+| `--select-random N` | | Sample N random images (instant indexing) |
+| `--reindex` | | Force rebuild of image index |
 
-### Dataset Index
+**Outputs:** `output_dir/` (detections), `output_dir_visualized/` (annotations), `predictions.db`
 
-The first random selection run builds an instant index file (`dataset_image_index.txt`) that enables millisecond-level random sampling of millions of files in subsequent runs.
+</details>
 
-## Project Structure
+### 3️⃣ Prediction API
+
+FastAPI server for Label Studio integration:
+
+```bash
+python prediction_api.py \
+  -w best.pt \
+  -m "model_v1.0" \
+  -H 0.0.0.0 \
+  -s 8000
+```
+
+<details>
+<summary><b>Arguments</b></summary>
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `-w, --weights` | | Path/URL to weights (required) |
+| `-m, --model-version` | | Model name/version for tracking |
+| `-d, --image-dir` | | Local image directory (avoids re-downloads) |
+| `-H, --host` | 0.0.0.0 | API host |
+| `-s, --port` | 8000 | API port |
+
+**Endpoint:** `POST /predict` with JSON body:
+```json
+{"task": {...}, "project": 123}
+```
+
+</details>
+
+### 4️⃣ Send Predictions to Label Studio
+
+Automatically generate predictions for unlabeled tasks:
+
+```bash
+python send_prediction_tasks.py
+```
+
+<details>
+<summary><b>Configuration</b></summary>
+
+Edit environment variables in the script:
+- `LABEL_STUDIO_TOKEN` – API token
+- `LS_URL` – Label Studio URL
+- `PROJECT_ID` – Target project
+- `ML_API_URL` – Prediction API endpoint
+
+Fetches all tasks without annotations/predictions and sends them to your prediction API.
+
+</details>
+
+### 5️⃣ Export Annotations
+
+Shell script to export Label Studio project:
+
+```bash
+./export_annotations.sh
+```
+
+## 🏗️ Project Structure
 
 ```
 dog_detection/
-├── prepare_detection_yolo_dataset.py   # Dataset preparation script
-├── predict_and_filter.py               # High-speed inference script
-├── LICENSE                             # MIT License
+├── prepare_detection_yolo_dataset.py  # Dataset prep
+├── predict_and_filter.py              # Batch inference
+├── prediction_api.py                  # FastAPI server
+├── send_prediction_tasks.py           # Label Studio integration
+├── export_annotations.sh              # Export helper
+├── requirements.txt
 └── README.md
 ```
 
-## Performance
+## 📊 Database Schema
 
-- **Inference Speed**: Processes thousands of images per minute on modern GPUs
-- **Memory Efficiency**: Streaming inference with configurable batch sizes
-- **Random Sampling**: Instant sampling of millions of files via indexed lookup
-- **Scalability**: Tested on datasets with millions of images
-
-## Example Workflows
-
-### Prepare dataset from Label Studio with S3
-
-```bash
-python prepare_detection_yolo_dataset.py \
-  -f annotations.json \
-  -l annotations \
-  --background \
-  --single-class
-```
-
-### Scan directory for dogs and copy detections
-
-```bash
-python predict_and_filter.py \
-  -w weights/best.pt \
-  -s /mnt/data/images \
-  -o results/detected_dogs \
-  --copy \
-  --db results/detections.db \
-  --batch 16 \
-  --half
-```
-
-### Randomly sample and process 10,000 images
-
-```bash
-python predict_and_filter.py \
-  -w weights/best.pt \
-  -s /mnt/large_dataset \
-  -o results/sampled \
-  --select-random 10000 \
-  --db results/predictions.db \
-  --visualize
-```
-
-## Database Schema
+<details>
+<summary><b>Expand to view</b></summary>
 
 ### predictions table
 ```sql
@@ -205,16 +210,74 @@ CREATE TABLE errors (
 );
 ```
 
-## Requirements
+</details>
 
-- **Primary Language**: Python
-- **License**: MIT
-- **Dependencies**: ultralytics, opencv-python, Pillow, tqdm, boto3, python-dotenv
+## 🎯 Typical Workflows
 
-## License
+<details>
+<summary><b>1. Prepare dataset from Label Studio</b></summary>
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+```bash
+python prepare_detection_yolo_dataset.py \
+  -f exported_project.json \
+  -l annotations \
+  --background \
+  --hallucinations false_positives/
+```
 
-## Contributing
+</details>
 
-Contributions are welcome! Please feel free to submit issues or pull requests to improve this project.
+<details>
+<summary><b>2. Scan directory and copy detected images</b></summary>
+
+```bash
+python predict_and_filter.py \
+  -w best.pt \
+  -s /mnt/data/images \
+  -o results/detected \
+  --copy \
+  --db results/detections.db \
+  --batch 16 \
+  --half
+```
+
+</details>
+
+<details>
+<summary><b>3. Random sample and visualize 10K images</b></summary>
+
+```bash
+python predict_and_filter.py \
+  -w best.pt \
+  -s /mnt/large_dataset \
+  -o results/sampled \
+  --select-random 10000 \
+  --visualize \
+  --db results/predictions.db
+```
+
+</details>
+
+<details>
+<summary><b>4. Start prediction API for Label Studio</b></summary>
+
+```bash
+python prediction_api.py -w best.pt -m "v1.0" &
+python send_prediction_tasks.py
+```
+
+</details>
+
+## ⚡ Performance
+
+- **Inference:** 1000+ images/min on modern GPUs
+- **Memory:** Streaming inference with configurable batch sizes
+- **Sampling:** Instant random sampling of millions of files via indexed lookup (first run builds index)
+
+## 📄 License
+
+MIT License – see [LICENSE](LICENSE) file
+
+## 🤝 Contributing
+
+Issues and pull requests welcome!
