@@ -193,3 +193,4 @@ archived/
 dataset_image_index.txt
 *.partial
 dataset.yaml
+*/__pycache__/

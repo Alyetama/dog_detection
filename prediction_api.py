@@ -2,12 +2,16 @@
 # coding: utf-8
 
 import argparse
+import gc
 import os
 import tempfile
+import threading
+import time
 from typing import Optional
 from urllib.parse import urlparse
 
 import requests
+import torch
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -19,6 +23,14 @@ from ultralytics import YOLO
 
 app = FastAPI()
 
+# --- Global Variables for Memory Management ---
+MODEL_OBJ = None
+WEIGHTS_PATH = None
+MODEL_VERSION = None
+IMAGE_DIR = None
+
+LAST_ACTIVE_TIME = time.time()
+IDLE_TIMEOUT_SECONDS = 300
 # ----------------------------------------------------------------------------
 
 
@@ -59,10 +71,37 @@ class Task(BaseModel):
     project: Optional[int] = None
 
 
-def load_model(model_weights: str, model_version: str) -> dict:
-    model_obj = YOLO(model_weights)
-    model_dict = {'model': model_obj, 'model_version': model_version}
-    return model_dict
+def load_model_lazy():
+    """Loads the model into the GPU if it isn't already loaded."""
+    global MODEL_OBJ
+    if MODEL_OBJ is None:
+        print(f"Cold start: Loading YOLO model from {WEIGHTS_PATH} to GPU...")
+        MODEL_OBJ = YOLO(WEIGHTS_PATH)
+
+
+def unload_model():
+    """Deletes the model and forces the GPU to clear the VRAM cache."""
+    global MODEL_OBJ
+    if MODEL_OBJ is not None:
+        print(
+            f"Idle timeout ({IDLE_TIMEOUT_SECONDS}s) reached. Unloading YOLO model from GPU VRAM..."
+        )
+        del MODEL_OBJ
+        MODEL_OBJ = None
+
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+def memory_manager():
+    """Background thread that checks for inactivity."""
+    global LAST_ACTIVE_TIME
+    while True:
+        time.sleep(60)
+        if MODEL_OBJ is not None and (time.time() -
+                                      LAST_ACTIVE_TIME) > IDLE_TIMEOUT_SECONDS:
+            unload_model()
 
 
 def _yolo_to_ls(model, x: float, y: float, width: float, height: float,
@@ -99,12 +138,12 @@ def _pred_dict(model_version: str, x: float, y: float, w: float, h: float,
 
 @app.post('/predict')
 def predict_endpoint(task: Task):
+    global LAST_ACTIVE_TIME
+    LAST_ACTIVE_TIME = time.time()
+
     _task = task.task
     if not _task.get('project'):
         if task.project:
-            if task.project not in MODEL.keys():
-                raise HTTPException(
-                    404, f'Project id `{task.project}` does not exist!')
             _task['project'] = task.project
         else:
             raise HTTPException(
@@ -112,8 +151,9 @@ def predict_endpoint(task: Task):
                 'contain a project id number!')
     task = _task
 
-    model_version = MODEL['model_version']
-    model = MODEL['model']
+    load_model_lazy()
+    model = MODEL_OBJ
+    model_version = MODEL_VERSION
 
     image_url = task['data']['image']
 
@@ -173,7 +213,10 @@ if __name__ == '__main__':
     load_dotenv()
     args = opts()
 
-    MODEL = load_model(args.weights, args.model_version)
+    WEIGHTS_PATH = args.weights
+    MODEL_VERSION = args.model_version
     IMAGE_DIR = args.image_dir
+
+    threading.Thread(target=memory_manager, daemon=True).start()
 
     uvicorn.run(app, host=args.host, port=args.port)
