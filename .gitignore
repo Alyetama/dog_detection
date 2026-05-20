@@ -187,3 +187,8 @@ archived/
 */
 *.tar
 *.ipynb
+!label-studio-ml-backend/
+!label-studio-ml-backend/**
+*/.env
+dataset_image_index.txt
+*.partial
