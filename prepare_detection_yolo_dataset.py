@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# coding: utf-8
 
 import argparse
 import json
@@ -10,11 +9,15 @@ from glob import glob
 from pathlib import Path
 
 import boto3
+import cv2
 from dotenv import load_dotenv
 from tqdm import tqdm
 
 
 def bbox_ls_to_yolo(x: float, y: float, width: float, height: float) -> tuple:
+    """
+    Converts Label Studio bounding box coordinates to YOLO format.
+    """
     x = (x + width / 2) / 100
     y = (y + height / 2) / 100
     w = width / 100
@@ -22,7 +25,11 @@ def bbox_ls_to_yolo(x: float, y: float, width: float, height: float) -> tuple:
     return x, y, w, h
 
 
-def create_label_files(task, labels_dest, label_by, class_mapping):
+def create_label_files(task: dict, labels_dest: str, label_by: str,
+                       class_mapping: dict) -> None:
+    """
+    Parses a single Label Studio task and generates the corresponding YOLO .txt label file.
+    """
     image_filename = Path(task["image"]).stem
     label_file_dest = f'{labels_dest}/{image_filename}.txt'
 
@@ -59,9 +66,12 @@ def create_label_files(task, labels_dest, label_by, class_mapping):
 
 
 def split_data(output_dir: str,
-               images_source_dir='ls_images',
-               labels_source_dir='ls_labels',
+               images_source_dir: str = 'ls_images',
+               labels_source_dir: str = 'ls_labels',
                seed: int = 8) -> None:
+    """
+    Cleans up mismatched files and splits the dataset into an 80/20 train and validation set.
+    """
     random.seed(seed)
 
     imgs_full = glob(f'{output_dir}/{images_source_dir}/*')
@@ -94,11 +104,11 @@ def split_data(output_dir: str,
 
     train, val = pairs[:train_len], pairs[train_len:]
 
-    for im, label in tqdm(train):
+    for im, label in tqdm(train, desc="Splitting Train"):
         shutil.copy(im, f'{output_dir}/images/train')
         shutil.copy(label, f'{output_dir}/labels/train')
 
-    for im, label in tqdm(val):
+    for im, label in tqdm(val, desc="Splitting Val"):
         shutil.copy(im, f'{output_dir}/images/val')
         shutil.copy(label, f'{output_dir}/labels/val')
 
@@ -106,9 +116,37 @@ def split_data(output_dir: str,
     shutil.rmtree(f'{output_dir}/{labels_source_dir}', ignore_errors=True)
 
 
-def run(project_exported_file, label_by, images_dir, exclude_classes,
-        single_class, use_background, hallucinations_dir):
+def compress_image(image_path: str, max_dim: int, jpeg_quality: int) -> None:
+    """
+    Reads an image, resizes it if the longest side exceeds max_dim preserving aspect ratio, 
+    and overwrites it with specified JPEG quality.
+    """
+    try:
+        img = cv2.imread(image_path)
+        if img is None:
+            return
 
+        h, w = img.shape[:2]
+
+        if max(h, w) > max_dim:
+            scale = max_dim / float(max(h, w))
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        cv2.imwrite(image_path, img,
+                    [int(cv2.IMWRITE_JPEG_QUALITY), jpeg_quality])
+    except Exception as e:
+        print(f"Failed to compress {image_path}: {e}")
+
+
+def run(project_exported_file: str, label_by: str, images_dir: str,
+        exclude_classes: list, single_class: bool, use_background: bool,
+        hallucinations_dir: str, compress: bool, compress_size: int,
+        compress_quality: int) -> None:
+    """
+    Main orchestration function to fetch images, parse labels, apply compression, and generate the YOLO dataset.
+    """
     images_source_dir = 'ls_images'
     labels_source_dir = 'ls_labels'
 
@@ -212,18 +250,22 @@ def run(project_exported_file, label_by, images_dir, exclude_classes,
 
         if task.get('is_hallucination'):
             shutil.copy(task['image'], local_dest_path)
-            continue
+        else:
+            copied_from_local = False
+            if images_dir:
+                potential_source = Path(images_dir) / image_filename
+                if potential_source.exists():
+                    shutil.copy(potential_source, local_dest_path)
+                    copied_from_local = True
 
-        copied_from_local = False
-        if images_dir:
-            potential_source = Path(images_dir) / image_filename
-            if potential_source.exists():
-                shutil.copy(potential_source, local_dest_path)
-                copied_from_local = True
+            if not copied_from_local:
+                s3_key = '/'.join(Path(task['image']).parts[2:])
+                s3_client.download_file(bucket_name, s3_key,
+                                        str(local_dest_path))
 
-        if not copied_from_local:
-            s3_key = '/'.join(Path(task['image']).parts[2:])
-            s3_client.download_file(bucket_name, s3_key, str(local_dest_path))
+        if compress:
+            compress_image(str(local_dest_path), compress_size,
+                           compress_quality)
 
     labels_dest = f'{project_folder}/{labels_source_dir}'
     for task in tqdm(data, desc="Creating Labels"):
@@ -253,6 +295,9 @@ def run(project_exported_file, label_by, images_dir, exclude_classes,
 
 
 def opts() -> argparse.Namespace:
+    """
+    Parses and returns command-line arguments.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument('-f',
                         '--project-exported-file',
@@ -292,10 +337,32 @@ def opts() -> argparse.Namespace:
         help=
         'Path to a local directory containing images where the model falsely detected an object (hard negatives).'
     )
+    parser.add_argument(
+        '--compress',
+        action='store_true',
+        help='Enable image compression and resizing during fetching.')
+    parser.add_argument(
+        '--compress-size',
+        type=int,
+        default=1280,
+        help=
+        'Maximum dimension for the longest side if compression is enabled (default: 1280).'
+    )
+    parser.add_argument(
+        '--compress-quality',
+        type=int,
+        default=95,
+        help=
+        'JPEG compression quality 1-100 if compression is enabled (default: 95).'
+    )
+
     return parser.parse_args()
 
 
-def main():
+def main() -> None:
+    """
+    Entry point for execution: loads environment variables, parses arguments, and triggers the run sequence.
+    """
     load_dotenv()
     args = opts()
 
@@ -308,7 +375,10 @@ def main():
         exclude_classes=exclude_list,
         single_class=args.single_class,
         use_background=args.background,
-        hallucinations_dir=args.hallucinations)
+        hallucinations_dir=args.hallucinations,
+        compress=args.compress,
+        compress_size=args.compress_size,
+        compress_quality=args.compress_quality)
 
 
 if __name__ == '__main__':
