@@ -68,9 +68,11 @@ def create_label_files(task: dict, labels_dest: str, label_by: str,
 def split_data(output_dir: str,
                images_source_dir: str = 'ls_images',
                labels_source_dir: str = 'ls_labels',
-               seed: int = 8) -> None:
+               seed: int = 8,
+               tracker_file: str = 'split_tracker.json') -> None:
     """
-    Cleans up mismatched files and splits the dataset into an 80/20 train and validation set.
+    Cleans up mismatched files, enforces historical splits using a JSON tracker,
+    and splits NEW data into an 80/20 train and validation set.
     """
     random.seed(seed)
 
@@ -99,16 +101,57 @@ def split_data(output_dir: str,
     labels = sorted(glob(f'{output_dir}/{labels_source_dir}/*'))
     pairs = list(zip(images, labels))
 
-    train_len = round(len(pairs) * 0.8)
-    random.shuffle(pairs)
+    # --- TRACKER LOGIC START ---
+    tracker_path = Path(tracker_file)
+    if tracker_path.exists():
+        with open(tracker_path, 'r') as f:
+            tracker = json.load(f)
+        print(f"Loaded tracker file with {len(tracker)} historical records.")
+    else:
+        tracker = {}
+        print("No tracker file found. Starting fresh.")
 
-    train, val = pairs[:train_len], pairs[train_len:]
+    train, val, new_pairs = [], [], []
 
-    for im, label in tqdm(train, desc="Splitting Train"):
+    for im, label in pairs:
+        im_name = Path(im).name
+        if im_name in tracker:
+            if tracker[im_name] == 'train':
+                train.append((im, label))
+            elif tracker[im_name] == 'val':
+                val.append((im, label))
+        else:
+            new_pairs.append((im, label))
+
+    # Shuffle and split ONLY the newly introduced images
+    random.shuffle(new_pairs)
+    new_train_len = round(len(new_pairs) * 0.8)
+
+    new_train = new_pairs[:new_train_len]
+    new_val = new_pairs[new_train_len:]
+
+    train.extend(new_train)
+    val.extend(new_val)
+
+    # Update the tracker with the new assignments
+    for im, _ in new_train:
+        tracker[Path(im).name] = 'train'
+    for im, _ in new_val:
+        tracker[Path(im).name] = 'val'
+
+    with open(tracker_path, 'w') as f:
+        json.dump(tracker, f, indent=4)
+
+    print(
+        f"Final split -> Train: {len(train)} | Val: {len(val)} (New images processed: {len(new_pairs)})"
+    )
+    # --- TRACKER LOGIC END ---
+
+    for im, label in tqdm(train, desc="Moving Train"):
         shutil.copy(im, f'{output_dir}/images/train')
         shutil.copy(label, f'{output_dir}/labels/train')
 
-    for im, label in tqdm(val, desc="Splitting Val"):
+    for im, label in tqdm(val, desc="Moving Val"):
         shutil.copy(im, f'{output_dir}/images/val')
         shutil.copy(label, f'{output_dir}/labels/val')
 
@@ -143,7 +186,7 @@ def compress_image(image_path: str, max_dim: int, jpeg_quality: int) -> None:
 def run(project_exported_file: str, label_by: str, images_dir: str,
         exclude_classes: list, single_class: bool, use_background: bool,
         hallucinations_dir: str, compress: bool, compress_size: int,
-        compress_quality: int) -> None:
+        compress_quality: int, tracker_file: str) -> None:
     """
     Main orchestration function to fetch images, parse labels, apply compression, and generate the YOLO dataset.
     """
@@ -217,22 +260,32 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
         if not use_background:
             background_tasks = []
 
-        if len(hal_tasks) > max_bg_count:
-            print(
-                f"Note: Capping hallucinations to {max_bg_count} to strictly maintain the 10% limit."
-            )
-            random.shuffle(hal_tasks)
-            hal_tasks = hal_tasks[:max_bg_count]
+        # --- RATIO LOGIC START ---
+        # Target a 50% split. Change hal_ratio if you want a different mix.
+        hal_ratio = 0.5
+        target_hal_count = int(max_bg_count * hal_ratio)
+        target_bg_count = max_bg_count - target_hal_count
 
-        allowed_random_bgs = max(0, max_bg_count - len(hal_tasks))
-        if len(background_tasks) > allowed_random_bgs:
-            random.shuffle(background_tasks)
-            background_tasks = background_tasks[:allowed_random_bgs]
+        # Spillover logic: If we lack images in one pool, grab more from the other pool
+        if len(hal_tasks) < target_hal_count:
+            target_bg_count += (target_hal_count - len(hal_tasks))
+            target_hal_count = len(hal_tasks)
+        elif len(background_tasks) < target_bg_count:
+            target_hal_count += (target_bg_count - len(background_tasks))
+            target_bg_count = len(background_tasks)
+
+        random.shuffle(hal_tasks)
+        random.shuffle(background_tasks)
+
+        hal_tasks = hal_tasks[:target_hal_count]
+        background_tasks = background_tasks[:target_bg_count]
 
         final_backgrounds = hal_tasks + background_tasks
         print(
             f"Injecting {len(hal_tasks)} hallucinations and {len(background_tasks)} random backgrounds."
         )
+        # --- RATIO LOGIC END ---
+
     else:
         final_backgrounds = []
 
@@ -271,7 +324,7 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
     for task in tqdm(data, desc="Creating Labels"):
         create_label_files(task, labels_dest, label_by, class_mapping)
 
-    split_data(project_folder)
+    split_data(project_folder, tracker_file=tracker_file)
 
     with open(f'{project_folder}/classes.txt', 'w') as f:
         for name, idx in names.items():
@@ -355,6 +408,13 @@ def opts() -> argparse.Namespace:
         help=
         'JPEG compression quality 1-100 if compression is enabled (default: 95).'
     )
+    parser.add_argument(
+        '--tracker-file',
+        type=str,
+        default='split_tracker.json',
+        help=
+        'Path to a JSON file used to track and enforce historical train/val splits.'
+    )
 
     return parser.parse_args()
 
@@ -378,7 +438,8 @@ def main() -> None:
         hallucinations_dir=args.hallucinations,
         compress=args.compress,
         compress_size=args.compress_size,
-        compress_quality=args.compress_quality)
+        compress_quality=args.compress_quality,
+        tracker_file=args.tracker_file)
 
 
 if __name__ == '__main__':
