@@ -186,7 +186,8 @@ def compress_image(image_path: str, max_dim: int, jpeg_quality: int) -> None:
 def run(project_exported_file: str, label_by: str, images_dir: str,
         exclude_classes: list, single_class: bool, use_background: bool,
         hallucinations_dir: str, compress: bool, compress_size: int,
-        compress_quality: int, tracker_file: str) -> None:
+        compress_quality: int, tracker_file: str,
+        hallucination_ratio: float) -> None:
     """
     Main orchestration function to fetch images, parse labels, apply compression, and generate the YOLO dataset.
     """
@@ -261,9 +262,8 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
             background_tasks = []
 
         # --- RATIO LOGIC START ---
-        # Target a 50% split. Change hal_ratio if you want a different mix.
-        hal_ratio = 0.5
-        target_hal_count = int(max_bg_count * hal_ratio)
+        # Target split based on the user-defined ratio
+        target_hal_count = int(max_bg_count * hallucination_ratio)
         target_bg_count = max_bg_count - target_hal_count
 
         # Spillover logic: If we lack images in one pool, grab more from the other pool
@@ -282,7 +282,7 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
 
         final_backgrounds = hal_tasks + background_tasks
         print(
-            f"Injecting {len(hal_tasks)} hallucinations and {len(background_tasks)} random backgrounds."
+            f"Injecting {len(hal_tasks)} hallucinations and {len(background_tasks)} random backgrounds based on a {hallucination_ratio:.0%} target ratio."
         )
         # --- RATIO LOGIC END ---
 
@@ -415,6 +415,13 @@ def opts() -> argparse.Namespace:
         help=
         'Path to a JSON file used to track and enforce historical train/val splits.'
     )
+    parser.add_argument(
+        '--hallucination-ratio',
+        type=float,
+        default=0.5,
+        help=
+        'Percentage (0.0 to 1.0) of the background allowance to dedicate to hallucinations. Default: 0.5 (50%%).'
+    )
 
     return parser.parse_args()
 
@@ -439,7 +446,8 @@ def main() -> None:
         compress=args.compress,
         compress_size=args.compress_size,
         compress_quality=args.compress_quality,
-        tracker_file=args.tracker_file)
+        tracker_file=args.tracker_file,
+        hallucination_ratio=args.hallucination_ratio)
 
 
 if __name__ == '__main__':
