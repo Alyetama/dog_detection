@@ -101,7 +101,6 @@ def split_data(output_dir: str,
     labels = sorted(glob(f'{output_dir}/{labels_source_dir}/*'))
     pairs = list(zip(images, labels))
 
-    # --- TRACKER LOGIC START ---
     tracker_path = Path(tracker_file)
     if tracker_path.exists():
         with open(tracker_path, 'r') as f:
@@ -123,7 +122,6 @@ def split_data(output_dir: str,
         else:
             new_pairs.append((im, label))
 
-    # Shuffle and split ONLY the newly introduced images
     random.shuffle(new_pairs)
     new_train_len = round(len(new_pairs) * 0.8)
 
@@ -133,7 +131,6 @@ def split_data(output_dir: str,
     train.extend(new_train)
     val.extend(new_val)
 
-    # Update the tracker with the new assignments
     for im, _ in new_train:
         tracker[Path(im).name] = 'train'
     for im, _ in new_val:
@@ -145,7 +142,6 @@ def split_data(output_dir: str,
     print(
         f"Final split -> Train: {len(train)} | Val: {len(val)} (New images processed: {len(new_pairs)})"
     )
-    # --- TRACKER LOGIC END ---
 
     for im, label in tqdm(train, desc="Moving Train"):
         shutil.copy(im, f'{output_dir}/images/train')
@@ -186,8 +182,8 @@ def compress_image(image_path: str, max_dim: int, jpeg_quality: int) -> None:
 def run(project_exported_file: str, label_by: str, images_dir: str,
         exclude_classes: list, single_class: bool, use_background: bool,
         hallucinations_dir: str, compress: bool, compress_size: int,
-        compress_quality: int, tracker_file: str,
-        hallucination_ratio: float) -> None:
+        compress_quality: int, tracker_file: str, hallucination_ratio: float,
+        extract_classes: list, extract_dir: str) -> None:
     """
     Main orchestration function to fetch images, parse labels, apply compression, and generate the YOLO dataset.
     """
@@ -208,6 +204,46 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
 
     with open(project_exported_file) as j:
         raw_data = json.load(j)
+
+    bucket_name = os.getenv('BUCKET_NAME')
+
+    if extract_classes:
+        ext_path = Path(extract_dir)
+        ext_path.mkdir(parents=True, exist_ok=True)
+
+        ext_tasks = []
+        for task in raw_data:
+            for ann in task.get(label_by, []):
+                if any(c in ann.get('rectanglelabels', [])
+                       for c in extract_classes):
+                    ext_tasks.append(task)
+                    break
+
+        print(
+            f"Extracting {len(ext_tasks)} images for classes {extract_classes} into {extract_dir}..."
+        )
+        for task in tqdm(ext_tasks, desc="Fetching Extracted Classes"):
+            image_filename = Path(task['image']).name
+            local_dest_path = ext_path / image_filename
+
+            if local_dest_path.exists():
+                continue
+
+            copied_from_local = False
+            if images_dir:
+                potential_source = Path(images_dir) / image_filename
+                if potential_source.exists():
+                    shutil.copy(potential_source, local_dest_path)
+                    copied_from_local = True
+
+            if not copied_from_local:
+                s3_key = '/'.join(Path(task['image']).parts[2:])
+                s3_client.download_file(bucket_name, s3_key,
+                                        str(local_dest_path))
+
+            if compress:
+                compress_image(str(local_dest_path), compress_size,
+                               compress_quality)
 
     object_tasks = [x for x in raw_data if x.get(label_by)]
     background_tasks = [x for x in raw_data if x.get('background') == 'yes']
@@ -261,18 +297,8 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
         if not use_background:
             background_tasks = []
 
-        # --- RATIO LOGIC START ---
-        # Target split based on the user-defined ratio
         target_hal_count = int(max_bg_count * hallucination_ratio)
         target_bg_count = max_bg_count - target_hal_count
-
-        # Spillover logic: If we lack images in one pool, grab more from the other pool
-        if len(hal_tasks) < target_hal_count:
-            target_bg_count += (target_hal_count - len(hal_tasks))
-            target_hal_count = len(hal_tasks)
-        elif len(background_tasks) < target_bg_count:
-            target_hal_count += (target_bg_count - len(background_tasks))
-            target_bg_count = len(background_tasks)
 
         random.shuffle(hal_tasks)
         random.shuffle(background_tasks)
@@ -284,14 +310,11 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
         print(
             f"Injecting {len(hal_tasks)} hallucinations and {len(background_tasks)} random backgrounds based on a {hallucination_ratio:.0%} target ratio."
         )
-        # --- RATIO LOGIC END ---
 
     else:
         final_backgrounds = []
 
     data = object_tasks + final_backgrounds
-
-    bucket_name = os.getenv('BUCKET_NAME')
 
     for task in tqdm(data, desc="Fetching Images"):
         image_filename = Path(task['image']).name
@@ -422,6 +445,20 @@ def opts() -> argparse.Namespace:
         help=
         'Percentage (0.0 to 1.0) of the background allowance to dedicate to hallucinations. Default: 0.5 (50%%).'
     )
+    parser.add_argument(
+        '--extract-class',
+        type=str,
+        default=None,
+        help=
+        'Comma-separated list of class names to extract into a separate folder (e.g., "other animal,bird").'
+    )
+    parser.add_argument(
+        '--extract-dir',
+        type=str,
+        default='other_animals',
+        help=
+        'Directory to save the extracted images if --extract-class is used (default: other_animals).'
+    )
 
     return parser.parse_args()
 
@@ -435,6 +472,8 @@ def main() -> None:
 
     exclude_list = [c.strip() for c in args.exclude_classes.split(',')
                     ] if args.exclude_classes else []
+    extract_list = [c.strip() for c in args.extract_class.split(',')
+                    ] if args.extract_class else []
 
     run(project_exported_file=args.project_exported_file,
         label_by=args.label_by,
@@ -447,7 +486,9 @@ def main() -> None:
         compress_size=args.compress_size,
         compress_quality=args.compress_quality,
         tracker_file=args.tracker_file,
-        hallucination_ratio=args.hallucination_ratio)
+        hallucination_ratio=args.hallucination_ratio,
+        extract_classes=extract_list,
+        extract_dir=args.extract_dir)
 
 
 if __name__ == '__main__':
