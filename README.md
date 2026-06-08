@@ -64,11 +64,15 @@ python prepare_detection_yolo_dataset.py \
 | `--single-class` | | Treat all classes as single target (id 0) |
 | `--background` | | Include background images (~10% of dataset) |
 | `--hallucinations` | | Directory with hard negative images |
+| `--hallucination-ratio` | 0.5 | Fraction (0.0–1.0) of the background budget to fill with hard negatives |
 | `--compress` | | Enable image compression |
 | `--compress-size` | | Max dimension (default: 1280) |
 | `--compress-quality` | | JPEG quality 1-100 (default: 95) |
+| `--tracker-file` | `split_tracker.json` | JSON file that locks images to their historical train/val split |
+| `--extract-class` | | Comma-separated classes to copy into a separate folder |
+| `--extract-dir` | `other_animals` | Destination folder for extracted class images |
 
-**Outputs:** `project_folder/` (train/val splits), `dataset.yaml`, `classes.txt`
+**Outputs:** `project_folder/` (train/val splits), `dataset.yaml`, `classes.txt`, `split_tracker.json`
 
 </details>
 
@@ -110,7 +114,7 @@ python predict_and_filter.py \
 
 ### 3️⃣ Prediction API
 
-FastAPI server for Label Studio integration:
+FastAPI server for Label Studio integration. The model is loaded lazily on the first request and automatically unloaded from GPU VRAM after 5 minutes of inactivity to free memory.
 
 ```bash
 python prediction_api.py \
@@ -143,21 +147,55 @@ python prediction_api.py \
 Automatically generate predictions for unlabeled tasks:
 
 ```bash
-python send_prediction_tasks.py
+python send_prediction_tasks.py \
+  --ls-url http://localhost:8080 \
+  --project-id 12 \
+  --ml-api-url http://localhost:8000/predict
 ```
 
 <details>
-<summary><b>Configuration</b></summary>
+<summary><b>Arguments & Configuration</b></summary>
 
-Edit environment variables in the script:
-- `LABEL_STUDIO_TOKEN` – API token
-- `LABEL_STUDIO_BASE_URL` – Label Studio URL
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--ls-url` | ✅ | Label Studio instance URL |
+| `--project-id` | ✅ | Label Studio project ID |
+| `--ml-api-url` | ✅ | URL of the prediction API endpoint |
+
+Set `LABEL_STUDIO_TOKEN` in `.env` — the script reads it automatically.
 
 Fetches all tasks without annotations/predictions and sends them to your prediction API.
 
 </details>
 
-### 5️⃣ Export Annotations
+### 5️⃣ Collect "Other Animal" Images
+
+Extract all images annotated with a specific class (e.g. hard negatives or non-target species) into a local folder for use as hallucination training data:
+
+```bash
+python generate_other_animals.py \
+  -f annotations.json \
+  -l annotations_group \
+  -o other_animals \
+  -c "other animal"
+```
+
+<details>
+<summary><b>Arguments</b></summary>
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `-f, --project-exported-file` | | Label Studio JSON export (required) |
+| `-l, --label-by` | `label` | Parent group of labels in annotations |
+| `-o, --output-dir` | `other_animals` | Destination folder for collected images |
+| `-i, --images-dir` | | Local image directory (avoids S3 downloads) |
+| `-c, --class-name` | `other animal` | Class name to collect |
+
+Downloads from S3 (using `.env` credentials) when images are not available locally.
+
+</details>
+
+### 6️⃣ Export Annotations
 
 Shell script to export Label Studio project:
 
@@ -173,6 +211,7 @@ dog_detection/
 ├── predict_and_filter.py              # Batch inference
 ├── prediction_api.py                  # FastAPI server
 ├── send_prediction_tasks.py           # Label Studio integration
+├── generate_other_animals.py          # Collect images by class label
 ├── export_annotations.sh              # Export helper
 ├── requirements.txt
 └── README.md
