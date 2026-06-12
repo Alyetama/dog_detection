@@ -25,6 +25,24 @@ def bbox_ls_to_yolo(x: float, y: float, width: float, height: float) -> tuple:
     return x, y, w, h
 
 
+def is_false_prediction(task: dict) -> bool:
+    """
+    Checks if a Label Studio task has been explicitly marked as a false prediction.
+    Supports both minified and full nested annotation formats.
+    """
+    # Handle minified format just in case
+    if task.get('false_pred') == 'yes' or task.get('false_pred') == ['yes']:
+        return True
+
+    # Handle full JSON nested format
+    for ann in task.get('annotations', []):
+        for res in ann.get('result', []):
+            if res.get('from_name') == 'false_pred':
+                if 'yes' in res.get('value', {}).get('choices', []):
+                    return True
+    return False
+
+
 def create_label_files(task: dict, labels_dest: str, label_by: str,
                        class_mapping: dict) -> None:
     """
@@ -245,10 +263,27 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
                 compress_image(str(local_dest_path), compress_size,
                                compress_quality)
 
-    object_tasks = [x for x in raw_data if x.get(label_by)]
-    background_tasks = [x for x in raw_data if x.get('background') == 'yes']
-    hal_tasks = []
+    object_tasks = []
+    background_tasks = []
+    json_hal_tasks = []
 
+    # Separate the raw tasks based on their flags
+    for task in raw_data:
+        if is_false_prediction(task):
+            task[
+                'background'] = 'yes'  # Ensures label creation writes empty txt
+            json_hal_tasks.append(task)
+        elif task.get('background') == 'yes':
+            background_tasks.append(task)
+        elif task.get(label_by):
+            object_tasks.append(task)
+
+    if json_hal_tasks:
+        print(
+            f"Found {len(json_hal_tasks)} explicit false predictions in the JSON."
+        )
+
+    local_hal_tasks = []
     if hallucinations_dir:
         hal_path = Path(hallucinations_dir)
         if hal_path.exists() and hal_path.is_dir():
@@ -256,13 +291,18 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
                 if img_file.is_file() and img_file.suffix.lower() in [
                         '.jpg', '.jpeg', '.png'
                 ]:
-                    hal_tasks.append({
-                        'image': str(img_file.absolute()),
-                        'background': 'yes',
-                        'is_hallucination': True
+                    local_hal_tasks.append({
+                        'image':
+                        img_file.name,
+                        'local_path':
+                        str(img_file.absolute()),
+                        'background':
+                        'yes',
+                        'is_local_hallucination':
+                        True
                     })
             print(
-                f"Found {len(hal_tasks)} hard negative images in {hallucinations_dir}."
+                f"Found {len(local_hal_tasks)} hard negative images in {hallucinations_dir}."
             )
         else:
             print(
@@ -291,7 +331,7 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
     if exclude_classes:
         print(f"Excluding the following classes: {exclude_classes}")
 
-    if use_background or hal_tasks:
+    if use_background or json_hal_tasks or local_hal_tasks:
         max_bg_count = int(len(object_tasks) / 9)
 
         if not use_background:
@@ -300,15 +340,27 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
         target_hal_count = int(max_bg_count * hallucination_ratio)
         target_bg_count = max_bg_count - target_hal_count
 
-        random.shuffle(hal_tasks)
+        random.shuffle(json_hal_tasks)
+        random.shuffle(local_hal_tasks)
         random.shuffle(background_tasks)
 
-        hal_tasks = hal_tasks[:target_hal_count]
+        # Prioritize JSON false predictions
+        final_hal_tasks = json_hal_tasks[:target_hal_count]
+        remaining_hal_slots = target_hal_count - len(final_hal_tasks)
+
+        # Fill remaining slots with local directory files if available
+        if remaining_hal_slots > 0:
+            final_hal_tasks.extend(local_hal_tasks[:remaining_hal_slots])
+
         background_tasks = background_tasks[:target_bg_count]
 
-        final_backgrounds = hal_tasks + background_tasks
+        final_backgrounds = final_hal_tasks + background_tasks
+
+        json_hal_used = len(json_hal_tasks[:target_hal_count])
+        local_hal_used = len(local_hal_tasks[:remaining_hal_slots])
         print(
-            f"Injecting {len(hal_tasks)} hallucinations and {len(background_tasks)} random backgrounds based on a {hallucination_ratio:.0%} target ratio."
+            f"Injecting {len(final_hal_tasks)} hallucinations ({json_hal_used} from JSON, {local_hal_used} from dir) "
+            f"and {len(background_tasks)} random backgrounds based on a {hallucination_ratio:.0%} target ratio."
         )
 
     else:
@@ -324,8 +376,8 @@ def run(project_exported_file: str, label_by: str, images_dir: str,
         if local_dest_path.exists():
             continue
 
-        if task.get('is_hallucination'):
-            shutil.copy(task['image'], local_dest_path)
+        if task.get('is_local_hallucination'):
+            shutil.copy(task['local_path'], local_dest_path)
         else:
             copied_from_local = False
             if images_dir:
