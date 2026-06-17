@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Dog Detection{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}" />
+</head>
+<body>
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="/" class="logo">
+        <span class="logo-icon">🐕</span>
+        <span class="logo-text">Dog<span>Detection</span></span>
+      </a>
+      <button class="mobile-menu-toggle" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
+      <ul class="nav-links">
+        <li><a href="/">Documentation</a></li>
+        <li><a href="/cli">CLI Reference</a></li>
+        <li><a href="/demo" class="demo-link">Live Demo</a></li>
+        <li><a href="https://github.com/Alyetama/dog_detection" target="_blank" rel="noopener">GitHub</a></li>
+        <li>
+          <a href="/demo" class="nav-icon-btn" aria-label="Dog detection demo">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M12 6.5C12 6.5 10.5 4 8 4C5.5 4 4 6.5 4 8.5C4 10.5 5 12.5 5 14.5C5 16.5 6.5 18 8.5 18C9.5 18 10.5 17.5 11 17V20C11 21.1 11.9 22 13 22H14C15.1 22 16 21.1 16 20V16.5C16 16.5 17 17 18 17C20 17 21.5 15.5 21.5 13.5C21.5 11.5 20.5 9.5 20.5 7.5C20.5 5.5 19 4 17 4C14.5 4 12 6.5 12 6.5Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="9" cy="9" r="1" fill="currentColor"/>
+            </svg>
+          </a>
+        </li>
+        <li><button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">☀️</button></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>Released under the MIT License · Built for high-speed dog detection with YOLOv26</p>
+    </div>
+  </footer>
+
+  <div class="lightbox" id="lightbox" hidden>
+    <button class="lightbox-close" id="lightbox-close" aria-label="Close">×</button>
+    <button class="lightbox-nav lightbox-prev" id="lightbox-prev" aria-label="Previous">‹</button>
+    <div class="lightbox-content">
+      <img src="" alt="" id="lightbox-img">
+      <div class="lightbox-caption" id="lightbox-caption"></div>
+      <div class="lightbox-counter" id="lightbox-counter"></div>
+    </div>
+    <button class="lightbox-nav lightbox-next" id="lightbox-next" aria-label="Next">›</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+  <script src="{{ url_for('static', path='/js/main.js') }}"></script>
+</body>
+</html>

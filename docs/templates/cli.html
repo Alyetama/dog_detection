@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}CLI Reference · Dog Detection{% endblock %}
+
+{% block content %}
+<section class="cli-hero">
+  <div class="container">
+    <h1>CLI Reference</h1>
+    <p class="hero-subtitle">
+      Complete command-line reference for every script in the repository.
+    </p>
+  </div>
+</section>
+
+<section class="section cli-section">
+  <div class="container cli-container">
+    <aside class="cli-sidebar">
+      <nav class="toc">
+        <h3>Scripts</h3>
+        <ul>
+          <li><a href="#export-annotations">export_annotations.sh</a></li>
+          <li><a href="#prepare-dataset">prepare_detection_yolo_dataset.py</a></li>
+          <li><a href="#run-inference">predict_and_filter.py</a></li>
+          <li><a href="#prediction-api">prediction_api.py</a></li>
+          <li><a href="#send-predictions">send_prediction_tasks.py</a></li>
+          <li><a href="#other-animals">generate_other_animals.py</a></li>
+        </ul>
+      </nav>
+    </aside>
+
+    <div class="cli-content">
+      <p class="cli-intro">
+        All scripts are run from the repository root. Arguments marked <span class="required">required</span> must be supplied; others use the documented defaults.
+      </p>
+
+      <article class="cli-card" id="export-annotations">
+        <div class="cli-header">
+          <h2><code>export_annotations.sh</code></h2>
+          <span class="cli-tag">Shell</span>
+        </div>
+        <p>Helper script that exports annotations from a Label Studio project. Edit the variables inside the script (project ID, output path, etc.) before running.</p>
+        <div class="code-block">
+          <button class="copy-btn" data-copy>Copy</button>
+          <pre><code class="language-bash">bash export_annotations.sh</code></pre>
+        </div>
+        <div class="cli-note">
+          <strong>Note:</strong> Requires <code>LABEL_STUDIO_TOKEN</code> to be set in your environment or <code>.env</code> file.
+        </div>
+      </article>
+
+      <article class="cli-card" id="prepare-dataset">
+        <div class="cli-header">
+          <h2><code>prepare_detection_yolo_dataset.py</code></h2>
+          <span class="cli-tag">Python</span>
+        </div>
+        <p>Converts a Label Studio JSON export into a YOLO detection dataset with train/validation splits. Split membership is locked by <code>split_tracker.json</code> so the same images always land in the same split across re-runs.</p>
+
+        <div class="code-block">
+          <button class="copy-btn" data-copy>Copy</button>
+          <pre><code class="language-bash">python prepare_detection_yolo_dataset.py \
+  -f annotations.json \
+  -l annotations_group \
+  --background \
+  --compress</code></pre>
+        </div>
+
+        <h3>Arguments</h3>
+        <table class="args-table">
+          <thead><tr><th>Argument</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>-f, --project-exported-file</code></td><td class="required">Yes</td><td>—</td><td>Path to the Label Studio JSON export.</td></tr>
+            <tr><td><code>-l, --label-by</code></td><td class="required">Yes</td><td>—</td><td>Parent group name that contains the labels in each annotation.</td></tr>
+            <tr><td><code>-i, --images-dir</code></td><td>No</td><td>—</td><td>Local directory to copy images from. When provided, images are not downloaded from S3.</td></tr>
+            <tr><td><code>-e, --exclude-classes</code></td><td>No</td><td>—</td><td>Comma-separated list of class names to exclude from the dataset.</td></tr>
+            <tr><td><code>--single-class</code></td><td>No</td><td>False</td><td>Treat every annotated object as class <code>0</code> regardless of label.</td></tr>
+            <tr><td><code>--background</code></td><td>No</td><td>False</td><td>Include background images (no annotations) as roughly 10% of the dataset.</td></tr>
+            <tr><td><code>--hallucinations</code></td><td>No</td><td>—</td><td>Directory containing hard-negative images for training.</td></tr>
+            <tr><td><code>--hallucination-ratio</code></td><td>No</td><td>0.5</td><td>Fraction (0.0–1.0) of the background budget to fill with hard negatives.</td></tr>
+            <tr><td><code>--compress</code></td><td>No</td><td>False</td><td>Compress images while preparing the dataset.</td></tr>
+            <tr><td><code>--compress-size</code></td><td>No</td><td>1280</td><td>Maximum dimension in pixels when compression is enabled.</td></tr>
+            <tr><td><code>--compress-quality</code></td><td>No</td><td>95</td><td>JPEG quality (1–100) when compression is enabled.</td></tr>
+            <tr><td><code>--tracker-file</code></td><td>No</td><td><code>split_tracker.json</code></td><td>JSON file that records the train/val assignment for every image.</td></tr>
+            <tr><td><code>--extract-class</code></td><td>No</td><td>—</td><td>Comma-separated classes to copy into a separate folder.</td></tr>
+            <tr><td><code>--extract-dir</code></td><td>No</td><td><code>other_animals</code></td><td>Destination folder when <code>--extract-class</code> is used.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Outputs</h3>
+        <ul class="cli-list">
+          <li><code>project_folder/</code> — YOLO dataset with <code>images/train</code>, <code>images/val</code>, <code>labels/train</code>, and <code>labels/val</code>.</li>
+          <li><code>dataset.yaml</code> — YOLO dataset configuration.</li>
+          <li><code>classes.txt</code> — Ordered class names.</li>
+          <li><code>split_tracker.json</code> — Persistent train/val split mapping.</li>
+        </ul>
+      </article>
+
+      <article class="cli-card" id="run-inference">
+        <div class="cli-header">
+          <h2><code>predict_and_filter.py</code></h2>
+          <span class="cli-tag">Python</span>
+        </div>
+        <p>High-speed batch inference over large image collections. Supports GPU acceleration, database logging, random sampling, and optional copying or visualization of detections.</p>
+
+        <div class="code-block">
+          <button class="copy-btn" data-copy>Copy</button>
+          <pre><code class="language-bash">python predict_and_filter.py \
+  -w best.pt \
+  -s /path/to/images \
+  -o output_dir \
+  --batch 8 \
+  --db predictions.db</code></pre>
+        </div>
+
+        <h3>Arguments</h3>
+        <table class="args-table">
+          <thead><tr><th>Argument</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>-w, --weights</code></td><td class="required">Yes</td><td>—</td><td>Path to the YOLO weights file.</td></tr>
+            <tr><td><code>-s, --source</code></td><td class="required">Yes</td><td>—</td><td>Base directory to scan for images.</td></tr>
+            <tr><td><code>-o, --output</code></td><td class="required">Yes</td><td>—</td><td>Output directory for results.</td></tr>
+            <tr><td><code>-p, --pattern</code></td><td>No</td><td>—</td><td>Glob pattern for subdirectories to scan.</td></tr>
+            <tr><td><code>-c, --conf</code></td><td>No</td><td>0.25</td><td>Minimum confidence threshold for a detection.</td></tr>
+            <tr><td><code>--imgsz</code></td><td>No</td><td>1280</td><td>Input size for inference.</td></tr>
+            <tr><td><code>--batch</code></td><td>No</td><td>8</td><td>Number of images processed together.</td></tr>
+            <tr><td><code>--half</code></td><td>No</td><td>False</td><td>Use FP16 half-precision inference.</td></tr>
+            <tr><td><code>--db</code></td><td>No</td><td>—</td><td>Path to an SQLite database for logging predictions and errors.</td></tr>
+            <tr><td><code>--copy</code></td><td>No</td><td>False</td><td>Copy detected images into the output directory.</td></tr>
+            <tr><td><code>--visualize</code></td><td>No</td><td>False</td><td>Save annotated images to <code>output_dir_visualized/</code>.</td></tr>
+            <tr><td><code>--select-random N</code></td><td>No</td><td>—</td><td>Instantly sample <code>N</code> random images from the index without a full scan.</td></tr>
+            <tr><td><code>--reindex</code></td><td>No</td><td>False</td><td>Force a rebuild of the image index.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Outputs</h3>
+        <ul class="cli-list">
+          <li><code>output_dir/</code> — Detection metadata and/or copied images.</li>
+          <li><code>output_dir_visualized/</code> — Annotated images when <code>--visualize</code> is used.</li>
+          <li><code>predictions.db</code> — SQLite log when <code>--db</code> is supplied.</li>
+        </ul>
+      </article>
+
+      <article class="cli-card" id="prediction-api">
+        <div class="cli-header">
+          <h2><code>prediction_api.py</code></h2>
+          <span class="cli-tag">Python / FastAPI</span>
+        </div>
+        <p>FastAPI server that exposes the trained model for Label Studio integration. The model is loaded lazily on the first request and automatically unloaded from GPU VRAM after 5 minutes of inactivity.</p>
+
+        <div class="code-block">
+          <button class="copy-btn" data-copy>Copy</button>
+          <pre><code class="language-bash">python prediction_api.py \
+  -w best.pt \
+  -m "model_v1.0" \
+  -H 0.0.0.0 \
+  -s 8000</code></pre>
+        </div>
+
+        <h3>Arguments</h3>
+        <table class="args-table">
+          <thead><tr><th>Argument</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>-w, --weights</code></td><td class="required">Yes</td><td>—</td><td>Path or URL to the YOLO weights.</td></tr>
+            <tr><td><code>-m, --model-version</code></td><td>No</td><td>—</td><td>Model name or version string for tracking.</td></tr>
+            <tr><td><code>-d, --image-dir</code></td><td>No</td><td>—</td><td>Local image directory used to avoid re-downloading images.</td></tr>
+            <tr><td><code>-H, --host</code></td><td>No</td><td>0.0.0.0</td><td>API host address.</td></tr>
+            <tr><td><code>-s, --port</code></td><td>No</td><td>8000</td><td>API port.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Endpoint</h3>
+        <div class="code-block">
+          <button class="copy-btn" data-copy>Copy</button>
+          <pre><code class="language-bash">POST /predict
+Content-Type: application/json
+
+{
+  "task": { ... },
+  "project": 123
+}</code></pre>
+        </div>
+      </article>
+
+      <article class="cli-card" id="send-predictions">
+        <div class="cli-header">
+          <h2><code>send_prediction_tasks.py</code></h2>
+          <span class="cli-tag">Python</span>
+        </div>
+        <p>Fetches all unlabeled tasks from a Label Studio project and forwards them to the prediction API. Set <code>LABEL_STUDIO_TOKEN</code> in <code>.env</code> for authentication.</p>
+
+        <div class="code-block">
+          <button class="copy-btn" data-copy>Copy</button>
+          <pre><code class="language-bash">python send_prediction_tasks.py \
+  --ls-url http://localhost:8080 \
+  --project-id 12 \
+  --ml-api-url http://localhost:8000/predict</code></pre>
+        </div>
+
+        <h3>Arguments</h3>
+        <table class="args-table">
+          <thead><tr><th>Argument</th><th>Required</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>--ls-url</code></td><td class="required">Yes</td><td>URL of the Label Studio instance.</td></tr>
+            <tr><td><code>--project-id</code></td><td class="required">Yes</td><td>Label Studio project ID.</td></tr>
+            <tr><td><code>--ml-api-url</code></td><td class="required">Yes</td><td>Full URL of the prediction API endpoint.</td></tr>
+          </tbody>
+        </table>
+      </article>
+
+      <article class="cli-card" id="other-animals">
+        <div class="cli-header">
+          <h2><code>generate_other_animals.py</code></h2>
+          <span class="cli-tag">Python</span>
+        </div>
+        <p>Extracts all images annotated with a specific class (for example hard negatives or non-target species) into a local folder. Images are downloaded from S3 when they are not available locally.</p>
+
+        <div class="code-block">
+          <button class="copy-btn" data-copy>Copy</button>
+          <pre><code class="language-bash">python generate_other_animals.py \
+  -f annotations.json \
+  -l annotations_group \
+  -o other_animals \
+  -c "other animal"</code></pre>
+        </div>
+
+        <h3>Arguments</h3>
+        <table class="args-table">
+          <thead><tr><th>Argument</th><th>Required</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>-f, --project-exported-file</code></td><td class="required">Yes</td><td>—</td><td>Path to the Label Studio JSON export.</td></tr>
+            <tr><td><code>-l, --label-by</code></td><td>No</td><td><code>label</code></td><td>Parent group of labels in the annotations.</td></tr>
+            <tr><td><code>-o, --output-dir</code></td><td>No</td><td><code>other_animals</code></td><td>Destination folder for collected images.</td></tr>
+            <tr><td><code>-i, --images-dir</code></td><td>No</td><td>—</td><td>Local image directory to copy from instead of downloading from S3.</td></tr>
+            <tr><td><code>-c, --class-name</code></td><td>No</td><td><code>other animal</code></td><td>Class name to collect.</td></tr>
+          </tbody>
+        </table>
+      </article>
+    </div>
+  </div>
+</section>
+{% endblock %}

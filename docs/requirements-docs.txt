@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+ultralytics
+loguru
+Pillow
+python-multipart
+jinja2

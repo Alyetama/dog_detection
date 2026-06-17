@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Dog Detection · Live Demo{% endblock %}
+
+{% block content %}
+<section class="demo-hero">
+  <div class="container">
+    <h1>Live Detection Demo</h1>
+    <p class="hero-subtitle">
+      Upload any image and run inference with the trained model weights. Detection runs locally on this machine.
+    </p>
+  </div>
+</section>
+
+<section class="section demo-section">
+  <div class="container demo-container">
+    <div class="demo-panel">
+      <div class="upload-area" id="drop-zone">
+        <input type="file" id="image-input" accept="image/*" hidden>
+        <div class="upload-prompt">
+          <div class="upload-icon">📤</div>
+          <p><strong>Drop an image here</strong> or click to browse</p>
+          <span class="upload-hint">JPEG, PNG, WEBP · Max 10 MB</span>
+        </div>
+        <div class="upload-preview" id="upload-preview" hidden>
+          <img src="" alt="Preview" id="preview-img">
+          <button class="remove-btn" id="remove-btn" aria-label="Remove image">×</button>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="control-group">
+          <label for="conf">Confidence</label>
+          <input type="range" id="conf" min="0.05" max="0.95" step="0.05" value="0.25">
+          <span class="control-value" id="conf-value">0.25</span>
+        </div>
+        <div class="control-group">
+          <label for="iou">IoU threshold</label>
+          <input type="range" id="iou" min="0.1" max="0.9" step="0.05" value="0.45">
+          <span class="control-value" id="iou-value">0.45</span>
+        </div>
+        <div class="control-group">
+          <label for="imgsz">Input size</label>
+          <select id="imgsz">
+            <option value="320">320</option>
+            <option value="416">416</option>
+            <option value="640" selected>640</option>
+            <option value="1280">1280</option>
+          </select>
+        </div>
+        <button id="detect-btn" class="btn btn-primary btn-full" disabled>
+          <span class="btn-text">Run Detection</span>
+          <span class="spinner" hidden></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="result-panel" id="result-panel">
+      <div class="result-placeholder" id="result-placeholder">
+        <div class="placeholder-icon">🐕</div>
+        <p>Your annotated result will appear here</p>
+      </div>
+      <div class="result-content" id="result-content" hidden>
+        <div class="result-image-wrapper">
+          <img src="" alt="Detection result" id="result-img">
+        </div>
+        <div class="result-meta" id="result-meta"></div>
+      </div>
+      <div class="result-error" id="result-error" hidden>
+        <p id="error-message"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Model Information</h2>
+    <div class="info-grid">
+      <div class="info-item">
+        <span class="info-label">Architecture</span>
+        <span class="info-value">YOLOv26</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Weights</span>
+        <span class="info-value break-all">{{ weights_path }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Status</span>
+        <span class="info-value">
+          {% if weights_exist and ultralytics_available %}
+            <span class="status-badge ready">Ready</span>
+          {% else %}
+            <span class="status-badge unavailable">Unavailable</span>
+          {% endif %}
+        </span>
+      </div>
+      {% if not weights_exist %}
+      <div class="info-item full-width warning">
+        Weights file not found at <code>{{ weights_path }}</code>. The demo will not work until the weights are restored.
+      </div>
+      {% endif %}
+      {% if not ultralytics_available %}
+      <div class="info-item full-width warning">
+        Ultralytics is not installed. Install dependencies with <code>pip install -r requirements.txt</code> to enable inference.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
