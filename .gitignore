@@ -185,6 +185,9 @@ archived/
 *.pt
 *.jsonl
 */
+!docs/
+!docs/**
+docs/.venv/
 *.tar
 *.ipynb
 !label-studio-ml-backend/
