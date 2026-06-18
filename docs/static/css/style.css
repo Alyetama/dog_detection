@@ -405,13 +405,23 @@ a:hover {
 }
 
 .crosshair {
-  transform-origin: 185px 138px;
+  transform-origin: 210px 205px;
   animation: crosshairPulse 2s ease-in-out infinite;
 }
 
 @keyframes crosshairPulse {
   0%, 100% { transform: scale(1); opacity: 0.5; }
   50% { transform: scale(1.15); opacity: 0.9; }
+}
+
+.detection-label {
+  opacity: 0;
+  animation: labelPop 0.6s ease-out 1.6s forwards;
+}
+
+@keyframes labelPop {
+  0% { opacity: 0; transform: translate(300px, 85px) scale(0.8); }
+  100% { opacity: 1; transform: translate(300px, 85px) scale(1); }
 }
 
 .floating-labels text {

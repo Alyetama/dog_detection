@@ -7,12 +7,15 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from PIL import Image
+
+# Force CPU inference for the demo to avoid CUDA driver/version warnings.
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 
 # Optional YOLO import; the demo page will show a friendly error if it fails.
 try:
@@ -80,9 +83,9 @@ def cli_reference(request: Request):
 @app.post("/predict")
 def predict(
     image: UploadFile = File(...),
-    conf: float = 0.25,
-    iou: float = 0.45,
-    imgsz: int = 640,
+    conf: float = Form(0.25),
+    iou: float = Form(0.45),
+    imgsz: int = Form(640),
 ):
     """Run YOLO inference on an uploaded image and return the annotated image."""
     if not ULTRALYTICS_AVAILABLE:
