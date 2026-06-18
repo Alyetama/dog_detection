@@ -198,3 +198,4 @@ dataset_image_index.txt
 dataset.yaml
 */__pycache__/
 label-studio-ml-backend/1*
+run_website.sh
