@@ -1,6 +1,7 @@
 """Dog Detection documentation site with live demo inference."""
 
 import io
+import json
 import os
 import time
 import uuid
@@ -126,10 +127,16 @@ def predict(
     annotated_image.save(output, format="JPEG", quality=95)
     output.seek(0)
 
-    num_detections = len(results[0].boxes) if results[0].boxes is not None else 0
+    detections = []
+    if results[0].boxes is not None:
+        for box in results[0].boxes:
+            detections.append({
+                "conf": float(box.conf[0]),
+            })
+    num_detections = len(detections)
     logger.info(
         f"Demo inference: {num_detections} detections in {inference_time:.1f}ms "
-        f"(conf={conf}, iou={iou}, imgsz={imgsz})"
+        f"(conf_threshold={conf}, iou_threshold={iou}, imgsz={imgsz})"
     )
 
     return StreamingResponse(
@@ -138,6 +145,7 @@ def predict(
         headers={
             "X-Detections": str(num_detections),
             "X-Inference-Time-Ms": f"{inference_time:.1f}",
+            "X-Detections-Json": json.dumps(detections),
             "Content-Disposition": f'inline; filename="detection_{uuid.uuid4().hex[:8]}.jpg"',
         },
     )

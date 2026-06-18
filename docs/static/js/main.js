@@ -184,12 +184,19 @@
         const url = URL.createObjectURL(blob);
         resultImg.src = url;
 
-        const detections = parseInt(response.headers.get("X-Detections") || "0", 10);
+        const detectionsCount = parseInt(response.headers.get("X-Detections") || "0", 10);
         const inferenceTime = response.headers.get("X-Inference-Time-Ms") || "—";
+        let detections = [];
+        try {
+          const raw = response.headers.get("X-Detections-Json");
+          if (raw) detections = JSON.parse(raw);
+        } catch {
+          detections = [];
+        }
 
         resultError.hidden = true;
 
-        if (detections === 0) {
+        if (detectionsCount === 0) {
           resultContent.hidden = true;
           resultPlaceholder.innerHTML = `
             <div class="placeholder-icon">🔍</div>
@@ -199,11 +206,22 @@
           resultPlaceholder.hidden = false;
         } else {
           resultPlaceholder.hidden = true;
+          const detectionLines = detections
+            .map(
+              (det) => `
+                <div class="meta-item result-line">
+                  <span class="meta-label">conf</span>
+                  <span class="meta-value">${det.conf.toFixed(3)}</span>
+                </div>
+              `
+            )
+            .join("");
           resultMeta.innerHTML = `
-            <div class="meta-item"><span class="meta-label">Detections:</span><span class="meta-value">${detections}</span></div>
-            <div class="meta-item"><span class="meta-label">Inference time:</span><span class="meta-value">${inferenceTime} ms</span></div>
-            <div class="meta-item"><span class="meta-label">Confidence:</span><span class="meta-value">${parseFloat(confInput.value).toFixed(2)}</span></div>
-            <div class="meta-item"><span class="meta-label">IoU:</span><span class="meta-value">${parseFloat(iouInput.value).toFixed(2)}</span></div>
+            <div class="meta-item result-line">
+              <span class="meta-label">Inference time:</span>
+              <span class="meta-value">${inferenceTime} ms</span>
+            </div>
+            ${detectionLines}
           `;
           resultContent.hidden = false;
         }

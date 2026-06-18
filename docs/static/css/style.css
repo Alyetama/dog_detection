@@ -947,18 +947,22 @@ pre code {
 
 .result-meta {
   display: flex;
-  gap: 1.5rem;
+  flex-direction: column;
+  gap: 0.5rem;
   padding: 1rem 1.5rem;
   background: var(--surface-2);
   border-top: 1px solid var(--border);
   font-size: 0.9rem;
-  flex-wrap: wrap;
 }
 
 .meta-item {
   display: flex;
   align-items: baseline;
   gap: 0.35rem;
+}
+
+.result-line {
+  width: 100%;
 }
 
 .meta-label {
