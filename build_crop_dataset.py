@@ -71,6 +71,17 @@ DOG_LABELS = {'leashed dog': 'leashed', 'unleashed dog': 'unleashed'}
 NON_DOG_LABELS = {'other animal', 'monkey', 'cow', 'sheep', 'goat', 'item'}
 
 
+# The sibling street_dogs_mp checkout: it owns the dashboard's flag ledger and
+# the harvest tool. Its location is this machine's business, not the script's,
+# so it comes from $STREET_DOGS_MP and the paths below are built from it. Unset,
+# the defaults are empty and each flag simply has to be passed explicitly.
+SDMP = os.environ.get('STREET_DOGS_MP', '')
+
+
+def _sdmp(*parts):
+    return os.path.join(SDMP, *parts) if SDMP else ''
+
+
 def copy_db(src, work_dir):
     """Copy the Label Studio DB (plus any WAL/SHM) and return the copy's path."""
     os.makedirs(work_dir, exist_ok=True)
@@ -238,8 +249,7 @@ def main():
                    'existing 2-class leash model, so this is the mode that '
                    'matters -- leashed and unleashed both become "dog".')
     p.add_argument('--flags',
-                   default='/media/biodiv/crucial/street_dogs_mp_crucial/'
-                   'data/hard_negatives/labels.jsonl',
+                   default=_sdmp('data', 'hard_negatives', 'labels.jsonl'),
                    help='JSONL of detections flagged as false positives in '
                    'the dashboard. When present those detections are re-cut '
                    'at FULL resolution from the source jpgs (the dashboard '
@@ -247,8 +257,7 @@ def main():
                    'class automatically -- no separate harvest step. Pass "" '
                    'to ignore.')
     p.add_argument('--harvest-tool',
-                   default='/media/biodiv/crucial/street_dogs_mp_crucial/'
-                   'tools/detect/harvest_flagged.py',
+                   default=_sdmp('tools', 'detect', 'harvest_flagged.py'),
                    help='harvest_flagged.py: resolves each flagged image_id '
                    'to its exact original-pixel box via the predictions '
                    'store.')

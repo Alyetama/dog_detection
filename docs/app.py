@@ -29,7 +29,14 @@ except Exception as exc:  # pragma: no cover
 
 
 APP_DIR = Path(__file__).resolve().parent
-WEIGHTS_PATH = Path("/home/biodiv/dogs_detection/runs/detect/DogDetection/train-30/weights/best.pt")
+# Weights are hundreds of MB and not in the repo, so their location is
+# configuration. The default is repo-relative -- correct for a checkout that
+# trained in place -- and $DOG_WEIGHTS overrides it. The demo page already
+# handles a missing model, so an unset path degrades instead of crashing.
+WEIGHTS_PATH = Path(os.environ.get(
+    "DOG_WEIGHTS",
+    APP_DIR.parent / "runs" / "detect" / "DogDetection" / "train-30"
+    / "weights" / "best.pt"))
 MODEL = None
 MODEL_LOADED_AT = 0.0
 
