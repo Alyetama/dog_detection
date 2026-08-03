@@ -199,3 +199,11 @@ dataset.yaml
 */__pycache__/
 label-studio-ml-backend/1*
 run_website.sh
+
+# Training runs. NOTE: leash_models is a SYMLINK to bobcat, so git sees a
+# file, not a directory -- a trailing slash here matches nothing and a
+# `git stash -u` will happily stash the link away. Removing it for 90 seconds
+# was enough to kill a 5.5-hour run mid-epoch (the CSV path stopped
+# resolving). No trailing slash.
+leash_models
+runs/
